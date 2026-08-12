@@ -1,12 +1,31 @@
 @import "tailwindcss";
 
+@theme {
+  --color-iqi-bg: #19191b;
+  --color-iqi-surface: #232326;
+  --color-iqi-surface-2: #2b2b2f;
+  --color-iqi-card: #f7f5f0;
+  --color-iqi-ink: #f2f1ec;
+  --color-iqi-ink-on-card: #17181a;
+  --color-iqi-ink-dim: #a7a7ac;
+  --color-iqi-ink-faint: #6e6e73;
+  --color-iqi-line: rgba(242, 241, 236, 0.1);
+  --color-iqi-accent: #f0602a;
+  --color-iqi-accent-deep: #c94a1c;
+  --color-iqi-live: #34c77b;
+  --color-iqi-years: #f0602a;
+  --color-iqi-txn: #3fae6b;
+  --color-iqi-sale: #3e8ede;
+  --color-iqi-rent: #9b6fe8;
+}
+
 :root {
   color-scheme: light dark;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
 }
 
 #root {

@@ -5,6 +5,15 @@ import stev from './agents/stev-yap-wei-chong.json'
 const SALE = 1
 const RENT = 2
 
+function stripHtml(html) {
+  if (!html) return ''
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function normalizeListing(listing) {
   return {
     id: listing.id,
@@ -20,6 +29,7 @@ function normalizeListing(listing) {
     bathrooms: listing.bathrooms,
     builtUp: listing.built_up,
     thumbnail: listing.images?.[0]?.medium_url || null,
+    listedAt: listing.available_date || listing.created_at || null,
   }
 }
 
@@ -39,9 +49,12 @@ function normalizeAgent(raw) {
     branch: raw.branch_name,
     region: raw.branch_region_name,
     country: raw.country,
-    description: raw.description,
+    description: stripHtml(raw.description),
     avatarUrl: raw.avatar_url,
     viewsCount: raw.views_count,
+    email: raw.email || null,
+    mobileContactNumber: raw.mobile_contact_number || null,
+    wechatId: raw.wechat_id || null,
     yearsOfExperience: raw.profile_summary?.years_of_experience ?? null,
     transactionsCount: raw.profile_summary?.transactions_count ?? null,
     saleCount,

@@ -15,7 +15,7 @@ function AgentRoute() {
     )
   }
 
-  return <AgentProfile agent={agent} />
+  return <AgentProfile agent={agent} key={agent.slug} />
 }
 
 export default function App() {

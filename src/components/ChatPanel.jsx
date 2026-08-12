@@ -67,26 +67,21 @@ export default function ChatPanel({ agent }) {
   }
 
   return (
-    <div className="flex flex-col h-[420px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-      <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-        </span>
-        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-          {agent.displayName}&apos;s AI Twin
-        </span>
-        <span className="ml-auto text-xs text-neutral-400">online 24/7</span>
+    <div className="flex flex-col h-[430px]">
+      <div className="px-5 py-3.5 border-b border-iqi-line flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-iqi-live motion-safe:animate-pulse flex-shrink-0" />
+        <span className="text-[13.5px] font-bold text-iqi-ink">{agent.displayName}&apos;s AI Twin</span>
+        <span className="ml-auto text-[11.5px] text-iqi-ink-faint">grounded &middot; not scripted</span>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 outline-none">
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+              className={`max-w-[84%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                 m.role === 'user'
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                  : 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100'
+                  ? 'bg-iqi-accent text-white rounded-br-sm'
+                  : 'bg-iqi-surface-2 border border-iqi-line text-iqi-ink rounded-bl-sm'
               }`}
             >
               {m.text}
@@ -95,25 +90,25 @@ export default function ChatPanel({ agent }) {
         ))}
         {isTyping && (
           <div className="flex justify-start">
-            <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl px-3.5 py-2.5 flex gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-bounce" />
+            <div className="bg-iqi-surface-2 border border-iqi-line rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-iqi-ink-faint motion-safe:animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-iqi-ink-faint motion-safe:animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-iqi-ink-faint motion-safe:animate-bounce" />
             </div>
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSend} className="border-t border-neutral-200 dark:border-neutral-800 p-2 flex gap-2">
+      <form onSubmit={handleSend} className="border-t border-iqi-line p-3 flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={`Ask ${agent.displayName} anything...`}
-          className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-600"
+          className="flex-1 rounded-lg border border-iqi-line bg-iqi-surface-2 text-iqi-ink placeholder:text-iqi-ink-faint px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-iqi-accent/40"
         />
         <button
           type="submit"
-          className="rounded-lg bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-40"
+          className="rounded-lg bg-iqi-accent text-white px-4 py-2 text-[13px] font-bold disabled:opacity-40"
           disabled={!input.trim()}
         >
           Send
