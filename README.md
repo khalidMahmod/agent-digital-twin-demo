@@ -2,6 +2,27 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
+## Getting Started
+
+Clone the repo and run it locally:
+
+```bash
+git clone git@github.com:khalidMahmod/agent-digital-twin-demo.git
+cd agent-digital-twin-demo
+npm install
+npm run dev
+```
+
+The app will be available at `http://localhost:5173` (Vite's default port).
+
+Other available scripts:
+
+```bash
+npm run build    # production build
+npm run preview  # preview the production build locally
+npm run lint     # run Oxlint
+```
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
