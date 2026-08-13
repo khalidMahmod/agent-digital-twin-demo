@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { isLiveMode, openTwinSession, sendTwinMessage } from '../lib/twinApi'
+import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
+import LeadCapturedCard from './LeadCapturedCard'
 
 // Mock response generator, grounded in the agent's real data.
 // Used when VITE_ATLAS_API_URL is unset, so the demo runs with no backend —
@@ -48,6 +49,9 @@ export default function ChatPanel({ agent }) {
   const [isTyping, setIsTyping] = useState(false)
   const [token, setToken] = useState(null)
   const [leadCaptured, setLeadCaptured] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [finalized, setFinalized] = useState(false)
+  const [lead, setLead] = useState(null)
   // Starts live if configured, but degrades to mock on any failure so a demo
   // never dies on a backend hiccup.
   const [live, setLive] = useState(isLiveMode)
@@ -119,8 +123,26 @@ export default function ChatPanel({ agent }) {
     }
   }
 
+  async function handleFinalize() {
+    if (!live || !token || finalizing) return
+
+    setFinalizing(true)
+    try {
+      const result = await finalizeTwinSession(token)
+      setFinalized(true)
+      // Present only when the Atlas instance has demo inspection enabled.
+      if (result.lead) setLead(result.lead)
+    } catch (error) {
+      console.warn('[twin] finalize failed:', error.message)
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // min-h rather than h: the panel grows when the lead card appears instead of
+  // squeezing the transcript out of view.
   return (
-    <div className="flex flex-col h-[430px]">
+    <div className="flex flex-col min-h-[430px]">
       <div className="px-5 py-3.5 border-b border-iqi-line flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-iqi-live motion-safe:animate-pulse flex-shrink-0" />
         <span className="text-[13.5px] font-bold text-iqi-ink">{agent.displayName}&apos;s AI Twin</span>
@@ -134,7 +156,7 @@ export default function ChatPanel({ agent }) {
         </span>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 outline-none">
+      <div ref={scrollRef} className="flex-1 min-h-[240px] max-h-[340px] overflow-y-auto px-5 py-4 space-y-3.5 outline-none">
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
@@ -163,17 +185,40 @@ export default function ChatPanel({ agent }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={`Ask ${agent.displayName} anything...`}
-          className="flex-1 rounded-lg border border-iqi-line bg-iqi-surface-2 text-iqi-ink placeholder:text-iqi-ink-faint px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-iqi-accent/40"
+          placeholder={
+            finalized ? 'This conversation has ended' : `Ask ${agent.displayName} anything...`
+          }
+          disabled={finalized}
+          className="flex-1 rounded-lg border border-iqi-line bg-iqi-surface-2 text-iqi-ink placeholder:text-iqi-ink-faint px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-iqi-accent/40 disabled:opacity-50"
         />
         <button
           type="submit"
           className="rounded-lg bg-iqi-accent text-white px-4 py-2 text-[13px] font-bold disabled:opacity-40"
-          disabled={!input.trim()}
+          disabled={!input.trim() || finalized}
         >
           Send
         </button>
       </form>
+
+      {/* Ends the session and scores its lead now, rather than waiting for
+          Atlas's 30-minute idle sweep — which is what makes the qualification
+          step visible inside a short demo. */}
+      {live && leadCaptured && !finalized ? (
+        <button
+          type="button"
+          onClick={handleFinalize}
+          disabled={finalizing}
+          className="mx-3 mb-3 rounded-lg border border-iqi-line text-iqi-ink-dim px-3 py-2 text-[12px] font-semibold hover:text-iqi-ink disabled:opacity-50"
+        >
+          {finalizing ? 'Scoring the lead…' : 'End chat & score this lead'}
+        </button>
+      ) : null}
+
+      {lead ? (
+        <div className="px-3 pb-3">
+          <LeadCapturedCard lead={lead} />
+        </div>
+      ) : null}
     </div>
   )
 }

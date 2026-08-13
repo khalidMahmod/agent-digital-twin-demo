@@ -47,6 +47,29 @@ export async function openTwinSession(agentSlug) {
   return response.json()
 }
 
+// Ends the conversation and scores its lead straight away, rather than
+// waiting for Atlas's idle sweep (30+ minutes). Returns the scored lead only
+// when the Atlas instance has demo inspection enabled — in production the
+// qualification verdict is the agent's view of the buyer, not the buyer's.
+export async function finalizeTwinSession(token) {
+  const response = await fetch(
+    `${BASE_URL}/api/web/twin_chats/${encodeURIComponent(token)}/finalize`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    },
+  )
+
+  if (!response.ok) {
+    throw new TwinApiError(
+      await parseError(response, 'Could not close the chat session'),
+      response.status,
+    )
+  }
+
+  return response.json()
+}
+
 export async function sendTwinMessage(token, message) {
   const response = await fetch(
     `${BASE_URL}/api/web/twin_chats/${encodeURIComponent(token)}/messages`,
