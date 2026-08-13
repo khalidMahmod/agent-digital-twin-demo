@@ -26,6 +26,33 @@ async function parseError(response, fallback) {
   }
 }
 
+// Fetches an agent's public profile from Atlas — the same endpoint that backs
+// iqiglobal.com's agent pages, and the one the bundled fixtures were exported
+// from, so the payload feeds normalizeAgent unchanged.
+//
+// Worth doing rather than always rendering fixtures: in live mode the twin
+// answers from Atlas's current listings, so a stale fixture would have the
+// page and the chat contradicting each other.
+export async function fetchAgentProfile(agentSlug) {
+  const response = await fetch(
+    `${BASE_URL}/api/web/agents/${encodeURIComponent(agentSlug)}`,
+    { headers: { Accept: 'application/json' } },
+  )
+
+  if (!response.ok) {
+    throw new TwinApiError(`Agent profile unavailable (${response.status})`, response.status)
+  }
+
+  const body = await response.json()
+  // The endpoint answers 200 with {} for an agent with no public profile.
+  const agent = body?.data ?? body
+  if (!agent || !agent.id) {
+    throw new TwinApiError('Agent has no public profile', 404)
+  }
+
+  return agent
+}
+
 // Opens a chat session for an agent's public profile. The agent is resolved
 // server-side from the slug; the returned token is what authenticates every
 // subsequent message, so the browser never asserts which agent it is talking to

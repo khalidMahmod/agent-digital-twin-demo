@@ -66,6 +66,11 @@ function normalizeAgent(raw) {
 
 export const AGENTS = [normalizeAgent(sally), normalizeAgent(stev)]
 
+// Exported so a profile fetched live from Atlas goes through exactly the same
+// normalization as the bundled fixtures — the fixtures were exported from that
+// endpoint, so the shapes are identical.
+export { normalizeAgent }
+
 export function getAgentBySlug(slug) {
   return AGENTS.find((a) => a.slug === slug)
 }

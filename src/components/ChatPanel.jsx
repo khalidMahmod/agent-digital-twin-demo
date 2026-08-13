@@ -38,6 +38,22 @@ function mockReply(agent, message) {
   return `Thanks for reaching out! I'm ${agent.displayName}'s AI assistant — I can help with questions about ${agent.branch} area listings, pricing, or availability (${agent.totalListings} active listings, ${agent.saleCount} for sale / ${agent.rentCount} for rent). What are you looking for?`
 }
 
+// Openers a real buyer would plausibly type, built from this agent's own data
+// so they differ per agent and always have something to match. Also saves
+// typing on stage — and the third one is the demo's point: it hands over
+// contact details, which is what turns the conversation into a Lead.
+function starterPrompts(agent) {
+  const township = agent.listings.find((l) => l.township)?.township
+  const area = township || agent.branch
+
+  const prompts = []
+  if (agent.rentCount > 0) prompts.push(`What do you have for rent in ${area}?`)
+  if (agent.saleCount > 0) prompts.push(`Anything for sale around ${area}?`)
+  prompts.push("I'm Tan Wei, 012-345 6789 — please have the agent call me")
+
+  return prompts.slice(0, 3)
+}
+
 export default function ChatPanel({ agent }) {
   const [messages, setMessages] = useState([
     {
@@ -93,7 +109,11 @@ export default function ChatPanel({ agent }) {
 
   async function handleSend(e) {
     e.preventDefault()
-    const text = input.trim()
+    await submit(input)
+  }
+
+  async function submit(raw) {
+    const text = raw.trim()
     if (!text || isTyping) return
 
     setMessages((prev) => [...prev, { role: 'user', text }])
@@ -180,6 +200,24 @@ export default function ChatPanel({ agent }) {
           </div>
         )}
       </div>
+
+      {/* Only while the conversation is untouched — once it's underway these
+          would be noise competing with the transcript. */}
+      {messages.length === 1 && !finalized ? (
+        <div className="px-5 pb-3 flex flex-wrap gap-2">
+          {starterPrompts(agent).map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => submit(prompt)}
+              disabled={isTyping}
+              className="rounded-full border border-iqi-line text-iqi-ink-dim hover:text-iqi-ink hover:border-iqi-line-strong px-3 py-1.5 text-[11.5px] text-left disabled:opacity-40"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <form onSubmit={handleSend} className="border-t border-iqi-line p-3 flex gap-2">
         <input
