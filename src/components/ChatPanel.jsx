@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { isLiveMode, openTwinSession, sendTwinMessage } from '../lib/twinApi'
 
 // Mock response generator, grounded in the agent's real data.
-// No backend yet — this is Phase 4 (fake the chat, confirm UX) before wiring
-// a real LLM endpoint. Keyword-matched against the agent's actual listings so
-// the two agents visibly diverge even in mock mode.
+// Used when VITE_ATLAS_API_URL is unset, so the demo runs with no backend —
+// and as the fallback if the live session can't be opened. Keyword-matched
+// against the agent's actual listings so the two agents visibly diverge even
+// in mock mode.
 function mockReply(agent, message) {
   const q = message.toLowerCase()
 
@@ -44,26 +46,77 @@ export default function ChatPanel({ agent }) {
   ])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [token, setToken] = useState(null)
+  const [leadCaptured, setLeadCaptured] = useState(false)
+  // Starts live if configured, but degrades to mock on any failure so a demo
+  // never dies on a backend hiccup.
+  const [live, setLive] = useState(isLiveMode)
   const scrollRef = useRef(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, isTyping])
 
-  function handleSend(e) {
+  // Open the session up front so the first message doesn't pay for it.
+  useEffect(() => {
+    if (!isLiveMode) return
+
+    let cancelled = false
+    openTwinSession(agent.slug)
+      .then((session) => {
+        if (!cancelled) setToken(session.token)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.warn('[twin] falling back to mock mode:', error.message)
+        setLive(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [agent.slug])
+
+  const replyWithMock = useCallback(
+    (text) => {
+      setTimeout(() => {
+        setMessages((prev) => [...prev, { role: 'assistant', text: mockReply(agent, text) }])
+        setIsTyping(false)
+      }, 600 + Math.random() * 500)
+    },
+    [agent],
+  )
+
+  async function handleSend(e) {
     e.preventDefault()
     const text = input.trim()
-    if (!text) return
+    if (!text || isTyping) return
 
     setMessages((prev) => [...prev, { role: 'user', text }])
     setInput('')
     setIsTyping(true)
 
-    // Mock latency so it reads like a real response, not an instant echo.
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { role: 'assistant', text: mockReply(agent, text) }])
+    if (!live || !token) {
+      replyWithMock(text)
+      return
+    }
+
+    try {
+      const result = await sendTwinMessage(token, text)
+      setMessages((prev) => [...prev, { role: 'assistant', text: result.reply }])
+      if (result.lead_captured) setLeadCaptured(true)
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `Sorry — I couldn't reach ${agent.displayName}'s assistant just then. Please try again in a moment.`,
+        },
+      ])
+      console.warn('[twin] message failed:', error.message)
+    } finally {
       setIsTyping(false)
-    }, 600 + Math.random() * 500)
+    }
   }
 
   return (
@@ -71,7 +124,14 @@ export default function ChatPanel({ agent }) {
       <div className="px-5 py-3.5 border-b border-iqi-line flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-iqi-live motion-safe:animate-pulse flex-shrink-0" />
         <span className="text-[13.5px] font-bold text-iqi-ink">{agent.displayName}&apos;s AI Twin</span>
-        <span className="ml-auto text-[11.5px] text-iqi-ink-faint">grounded &middot; not scripted</span>
+        {leadCaptured ? (
+          <span className="text-[10px] font-bold uppercase tracking-wide text-iqi-live bg-iqi-live/15 px-2 py-0.5 rounded">
+            Lead captured in Atlas
+          </span>
+        ) : null}
+        <span className="ml-auto text-[11.5px] text-iqi-ink-faint">
+          {live ? 'grounded · not scripted' : 'demo mode'}
+        </span>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 outline-none">
