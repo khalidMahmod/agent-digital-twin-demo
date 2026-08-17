@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
-import { loadConversation, saveConversation } from '../lib/twinStorage'
+import { loadConversation, saveConversation, clearConversation } from '../lib/twinStorage'
 import ChatMessage from './ChatMessage'
 
 // How long the conversation must sit quiet before the session is finalized and
@@ -91,6 +91,8 @@ export default function ChatPanel({ agent }) {
   const [isTyping, setIsTyping] = useState(false)
   const [token, setToken] = useState(restored?.token ?? null)
   const [leadCaptured, setLeadCaptured] = useState(restored?.leadCaptured ?? false)
+  const [confirmingClear, setConfirmingClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
   // A ref, not state: the idle timer and the visibility handler both race to
   // finalize, and a ref settles that synchronously without a re-render.
   const finalizedRef = useRef(false)
@@ -187,6 +189,40 @@ export default function ChatPanel({ agent }) {
     }
   }
 
+  // Clears the visible conversation and starts a fresh one.
+  //
+  // Deliberately closes the old session on the way out rather than abandoning
+  // it: that scores any lead it produced instead of leaving it unscored until
+  // the idle sweep, and stops the buyer's transcript hanging around half-open.
+  //
+  // Note what this does NOT do — it does not delete a lead already sent to the
+  // agent. If the buyer asked to be contacted, that request stands; a Clear
+  // button that silently retracted it would be dishonest to both sides. It
+  // clears this device and starts over.
+  async function handleClear() {
+    if (clearing) return
+    setClearing(true)
+
+    const previousToken = token
+
+    setMessages([greeting])
+    setInput('')
+    setLeadCaptured(false)
+    setToken(null)
+    finalizedRef.current = false
+    openingRef.current = null
+    clearConversation(agent.slug)
+    setConfirmingClear(false)
+
+    try {
+      if (live && previousToken) await finalizeTwinSession(previousToken)
+    } catch (error) {
+      console.warn('[twin] finalize on clear failed:', error.message)
+    } finally {
+      setClearing(false)
+    }
+  }
+
   // A restored token can point at a session the server has already closed —
   // routine here, because a session finalizes itself 15s after a lead is
   // captured. Rather than dead-end the buyer, open a fresh session and resend.
@@ -256,6 +292,40 @@ export default function ChatPanel({ agent }) {
         <span className="ml-auto text-[11.5px] text-iqi-ink-faint">
           {live ? 'grounded · not scripted' : 'demo mode'}
         </span>
+
+        {/* Two-step rather than a modal: one stray click shouldn't wipe a
+            conversation, but a confirm dialog is heavy for something this
+            small. Only offered once there is something worth clearing. */}
+        {messages.length > 1 ? (
+          confirmingClear ? (
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={clearing}
+                className="font-semibold text-iqi-accent hover:underline disabled:opacity-50"
+              >
+                {clearing ? 'Clearing…' : 'Clear chat?'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="text-iqi-ink-faint hover:text-iqi-ink-dim"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingClear(true)}
+              aria-label="Clear this conversation"
+              className="text-[11px] text-iqi-ink-faint hover:text-iqi-ink-dim"
+            >
+              Clear
+            </button>
+          )
+        ) : null}
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-[240px] max-h-[340px] overflow-y-auto px-5 py-4 space-y-3.5 outline-none">
