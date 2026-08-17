@@ -1,5 +1,8 @@
 # Atlas frontend handoff: Twin Conversation panel on the lead detail
 
+> Superseded by the full spec: [`atlas-leads-twin-panel-frontend-spec.md`](./atlas-leads-twin-panel-frontend-spec.md).
+> This doc is kept for the original context/rationale; hand the FE dev the spec.
+
 The AI Twin lead engine reuses Atlas's existing Leads page wholesale — list,
 filters, Edit Lead modal, statuses, WhatsApp/Call buttons all work unchanged,
 and the twin's extracted fields land in columns the modal already renders
