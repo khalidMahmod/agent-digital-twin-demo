@@ -1,16 +1,24 @@
 # Seeds an Atlas environment with the two demo agents' listings, so the AI Twin
 # has real inventory to answer from.
 #
-# Run from the atlas-api repo, pointing at the JSON fixtures in this repo:
+# Self-contained on purpose: atlas-api has no local `staging` database config
+# (only default/test — staging reads DATABASE_URL on the server), so this cannot
+# be run from a laptop against staging. It has to run ON the staging box, where
+# the demo repo's JSON fixtures do not exist. So it fetches its data over HTTP
+# and falls back to local fixtures only when they happen to be present.
 #
+#   # on the staging server, in the atlas-api directory
+#   bin/rails runner seed_staging_listings.rb
+#
+#   # locally against a dev/test DB, if the demo repo is checked out
 #   cd ~/Work/atlas-api
-#   RAILS_ENV=staging bin/rails runner \
+#   RAILS_ENV=test bin/rails runner \
 #     ~/Work/agent-digital-twin-demo/scripts/seed_staging_listings.rb
 #
-# Source data is agent-digital-twin-demo/src/data/agents/*.json, exported from
-# Atlas's PUBLIC /api/web/agents/:slug endpoint — i.e. only data already visible
-# on iqiglobal.com. Nothing private is copied, and no production DB access is
-# needed.
+# Source is Atlas's PUBLIC /api/web/agents/:slug endpoint — data already visible
+# on iqiglobal.com. Nothing private is copied and no production DB access is
+# needed. Override the source host with SOURCE_API if production is unreachable
+# from wherever this runs.
 #
 # Deliberately does NOT touch users: agents 2287 and 3705 already exist on
 # staging with the same ids, and copying production User rows would drag in IC
@@ -21,8 +29,13 @@
 # Idempotent: listings are matched on their `code`, so re-running updates rather
 # than duplicates. Safe to run repeatedly while iterating on a demo.
 
+require "net/http"
+require "uri"
+
 FIXTURE_DIR = File.expand_path("../src/data/agents", __dir__)
-SLUGS = %w[sally-wong-sex-lee stev-yap-wei-chong].freeze
+SOURCE_API = ENV.fetch("SOURCE_API", "https://api.iqiglobal.com").sub(%r{/+\z}, "")
+SLUGS = (ENV["SLUGS"].presence&.split(",")&.map(&:strip) ||
+         %w[sally-wong-sex-lee stev-yap-wei-chong]).freeze
 
 # Keep the seed small by default: the twin searches rather than recites, so a
 # few dozen listings demo just as well as hundreds and import far faster.
@@ -138,14 +151,36 @@ end
 total_created = 0
 total_updated = 0
 
-SLUGS.each do |slug|
+# Local fixture if it happens to be here (fast, offline); otherwise the public
+# API, which is what makes this runnable on a server that has no checkout of
+# the demo repo.
+def load_agent_payload(slug)
   path = File.join(FIXTURE_DIR, "#{slug}.json")
-  unless File.exist?(path)
-    warn "  ! fixture not found: #{path}"
-    next
+  if File.exist?(path)
+    puts "  #{slug}: reading local fixture"
+    return JSON.parse(File.read(path))
   end
 
-  data = JSON.parse(File.read(path))
+  url = URI.parse("#{SOURCE_API}/api/web/agents/#{slug}")
+  puts "  #{slug}: fetching #{url}"
+  response = Net::HTTP.get_response(url)
+
+  unless response.is_a?(Net::HTTPSuccess)
+    warn "    ! #{url} returned #{response.code}"
+    return nil
+  end
+
+  body = JSON.parse(response.body)
+  body.is_a?(Hash) ? (body["data"] || body) : nil
+rescue StandardError => e
+  warn "    ! could not load #{slug}: #{e.class} #{e.message}"
+  nil
+end
+
+SLUGS.each do |slug|
+  data = load_agent_payload(slug)
+  next if data.nil? || data["id"].blank?
+
   agent = ::User.find_by(slug: slug) || ::User.find_by(id: data["id"])
 
   if agent.nil?
