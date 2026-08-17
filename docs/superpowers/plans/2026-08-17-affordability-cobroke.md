@@ -479,7 +479,10 @@ module Leads
 
         scope = base_scope
         scope = filter_place(scope, place)
-        scope.limit(MAX_MATCHES).to_a
+        # Cheapest first, and an explicit tie-break: limit() without an order
+        # returns whatever the database feels like, which makes both the tests
+        # and what the agent sees change for no reason.
+        scope.order(asking_price_cents: :asc, id: :asc).limit(MAX_MATCHES).to_a
       end
 
       def base_scope
@@ -1262,8 +1265,14 @@ async def search_network_listings(
 
     # open_for_internal_co_broke is the consent flag: only listings whose
     # owning agent opted into internal co-broking may be surfaced here.
+    # user_id_not_eq excludes THIS agent's own stock server-side. Done here
+    # rather than by filtering the response: the index payload's agent block
+    # is a serializer detail, and an exclusion that silently stops working
+    # would present the agent's own listings back to the buyer as "network"
+    # inventory. user_id is ransackable, so the database enforces it.
     params: Dict[str, Any] = {
         "q[open_for_internal_co_broke_eq]": "true",
+        "q[user_id_not_eq]": agent_id,
         "per_page": 50,
         "page": 1,
     }
@@ -1307,10 +1316,6 @@ async def search_network_listings(
         listings = []
 
     def matches(listing: Dict[str, Any]) -> bool:
-        # The agent's own listings are search_agent_listings' job; showing
-        # them here would double-count what the buyer has already seen.
-        if str(listing.get("user", {}).get("id", "")) == str(agent_id):
-            return False
         price = listing.get("asking_price_amount") or 0
         if min_price_myr and price < min_price_myr:
             return False
