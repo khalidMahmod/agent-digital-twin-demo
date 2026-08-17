@@ -2,7 +2,7 @@
 
 Status: ready for implementation
 Owner: FE dev (Atlas frontend / Engagement Hub)
-Estimated effort: 1–2 hours (read-only rendering of an existing API response)
+
 
 ---
 
@@ -132,6 +132,27 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | `whatsapp_url` | string \| `null` | Full `https://wa.me/...` link, pre-filled. `null` if the lead has no phone number. |
 | `email_url` | string \| `null` | Full `mailto:...` link, pre-filled subject + body. `null` if the lead has no email. |
 
+**`ai_twin_conversation.extracted.financing`** (`null` unless the twin ran an affordability check with the buyer)
+
+| Field | Type | Notes |
+|---|---|---|
+| `max_property_price` | string \| `null` | Indicative maximum property price, e.g. `"RM 610,000"`. Already formatted — render as-is. |
+| `monthly_instalment` | string \| `null` | Indicative monthly repayment, e.g. `"RM 2,900"`. |
+
+**`ai_twin_cobroke`** (present only for AI Twin leads; absent/`null` unless another agent's listing matched)
+
+| Field | Type | Notes |
+|---|---|---|
+| `matched_at` | ISO 8601 string | When the match ran. |
+| `listings` | array | At most 3, cheapest first. |
+| `listings[].id` | integer | Atlas listing id — safe to deep-link to the listing page. |
+| `listings[].property_name` | string | |
+| `listings[].township` | string | |
+| `listings[].price` | string | Pre-formatted, e.g. `"RM 450,000"` or `"RM 2,500/month"`. |
+| `listings[].type` | string | `"Sale"` or `"Rental"`. |
+| `listings[].agent_name` | string \| `null` | The agent who owns the listing. **Agent-facing only** — the buyer is never told this in chat. |
+| `listings[].agent_phone` | string \| `null` | Same. Render as a `tel:`/WhatsApp link so the agent can call their colleague. |
+
 ## 4. Component 1 — "AI Twin Conversation" card
 
 **Purpose:** let the agent read the actual conversation before calling, without leaving the modal.
@@ -165,6 +186,29 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
   - If both are present, WhatsApp is primary; email can be a secondary/text link next to it (e.g. "or send by email") — optional, not required for v1.
 - These are **plain `<a href>` links**, not API calls. Clicking one hands off to WhatsApp Web / the OS mail client with the message pre-filled; the agent reviews and sends it themselves from their own account. Nothing is sent automatically, and there is no follow-up API call to make when the button is clicked.
 
+## 5a. Affordability row (inside the Conversation card)
+
+When `ai_twin_conversation.extracted.financing` is non-null, show a small highlighted row inside the Conversation card, above the transcript:
+
+> **Affordability checked** — can support a property up to **RM 610,000** (~RM 2,900/month)
+
+Both figures arrive pre-formatted; render them as-is. Add a short qualifier such as "indicative, not a bank approval" — the twin says this to the buyer and the agent should see the same caveat. When `financing` is `null`, render nothing (most leads won't have it).
+
+## 5b. Component 3 — "Co-broke Matches" card
+
+**Purpose:** when the agent has nothing suitable, show which colleagues do — turning a dead lead into a co-broke deal.
+
+**Render only when `ai_twin_cobroke` is non-null.** Place it after the Suggested Follow-up card.
+
+**Structure:**
+- Header: "Co-broke Matches", with a short subtitle: "Other IQI agents have stock matching this buyer."
+- One row per `listings[]` entry: `property_name`, `township`, `price`, `type` badge.
+- Each row shows the **owning agent**: `agent_name`, with `agent_phone` as a call/WhatsApp link so the agent can reach their colleague directly.
+- `id` can deep-link to the existing listing page if the modal has a route for it — optional.
+- Read-only. No co-broke request is created from here; the agent contacts the colleague themselves.
+
+**Important:** these listings and the owning agents' names are **agent-facing only**. The buyer was shown the properties without any agent attribution, and was told the profile agent can arrange them through IQI's network. Nothing in this card should imply the buyer knows whose listings these are.
+
 ## 6. Edge cases
 
 | Case | Expected behavior |
@@ -178,6 +222,9 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | Both `whatsapp_url` and `email_url` are `null` | Show the follow-up card (draft text is still useful to read/copy), but no send button — just the "No phone or email on file yet" note. |
 | Very long transcript | Scrollable container (§4) — the modal itself should not grow unbounded. |
 | Message contains Markdown the renderer doesn't support (tables, links, etc.) | Not expected from the twin today (only bold + bullets are used), but fall back to plain text rendering rather than showing raw Markdown syntax if something unsupported appears. |
+| `extracted.financing === null` | Render no affordability row (§5a). This is the common case — most buyers never run the check. |
+| `ai_twin_cobroke` absent or `null` | Omit the Co-broke Matches card entirely (§5b). Also the common case. |
+| A co-broke listing has `agent_phone === null` | Show `agent_name` as plain text with no call link, rather than a dead link. |
 
 ## 7. Non-goals (explicitly out of scope for this change)
 
@@ -202,6 +249,9 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 - [ ] A lead with a nurture draft, no phone, but an email shows "Send by Email" instead, opening the default mail client with subject/body pre-filled.
 - [ ] A lead with a nurture draft and neither phone nor email shows the draft text with no send button.
 - [ ] A conversation long enough to overflow scrolls inside its own container without growing the modal off-screen.
+- [ ] A lead where the twin ran an affordability check shows the affordability row with both figures and the "indicative" qualifier; a lead without one shows no row.
+- [ ] A lead with co-broke matches shows the card with each listing's owning agent and a working call link; a lead without matches shows no card.
+- [ ] A co-broke listing whose owning agent has no phone renders the name as plain text, not a broken link.
 
 ## 9. Open questions for the FE dev (design polish, not blockers)
 
