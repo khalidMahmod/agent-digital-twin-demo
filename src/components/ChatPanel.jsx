@@ -49,13 +49,30 @@ function mockReply(agent, message) {
 // typing on stage — and the third one is the demo's point: it hands over
 // contact details, which is what turns the conversation into a Lead.
 function starterPrompts(agent) {
-  const township = agent.listings.find((l) => l.township)?.township
-  const area = township || agent.branch
+  // Busiest township rather than the newest listing's, so the suggested areas
+  // are where this agent actually has depth to answer from.
+  const byTownship = new Map()
+  for (const listing of agent.listings) {
+    if (!listing.township) continue
+    byTownship.set(listing.township, (byTownship.get(listing.township) ?? 0) + 1)
+  }
+  const busiest = [...byTownship.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  const area = busiest || agent.branch
 
   const prompts = []
   if (agent.rentCount > 0) prompts.push(`What do you have for rent in ${area}?`)
   if (agent.saleCount > 0) prompts.push(`Anything for sale around ${area}?`)
-  prompts.push("I'm Tan Wei, 012-345 6789 — please have the agent call me")
+
+  // An investor's question, not a scripted handover of someone's identity.
+  // The previous third chip typed a fake name and phone number on the
+  // visitor's behalf — fine as a demo shortcut, indefensible on a public page
+  // where a real person clicking it would be submitting a stranger's details.
+  //
+  // This one also exercises what the twin is genuinely good at: it has area
+  // price statistics and comparison tools, so a yield question gets a real
+  // answer rather than a brochure line, and it surfaces motivation the scorer
+  // records on the lead.
+  prompts.push(`I'm buying for investment — what kind of rental returns does ${area} see?`)
 
   return prompts.slice(0, 3)
 }
