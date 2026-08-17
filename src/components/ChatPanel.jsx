@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
+import { loadConversation, saveConversation } from '../lib/twinStorage'
 import ChatMessage from './ChatMessage'
 
 // How long the conversation must sit quiet before the session is finalized and
@@ -60,19 +61,23 @@ function starterPrompts(agent) {
 }
 
 export default function ChatPanel({ agent }) {
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      text: `Hi, I'm ${agent.displayName}'s AI assistant. I'm grounded in ${agent.displayName}'s real listings and track record, and I reply 24/7 — even while they're offline. What can I help you with?`,
-    },
-  ])
+  const greeting = {
+    role: 'assistant',
+    text: `Hi, I'm ${agent.displayName}'s AI assistant. I'm grounded in ${agent.displayName}'s real listings and track record, and I reply 24/7 — even while they're offline. What can I help you with?`,
+  }
+  // Restored synchronously so a refresh paints the existing conversation
+  // immediately rather than flashing an empty chat first.
+  const restored = isLiveMode ? loadConversation(agent.slug) : null
+
+  const [messages, setMessages] = useState(restored?.messages?.length ? restored.messages : [greeting])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [token, setToken] = useState(null)
-  const [leadCaptured, setLeadCaptured] = useState(false)
+  const [token, setToken] = useState(restored?.token ?? null)
+  const [leadCaptured, setLeadCaptured] = useState(restored?.leadCaptured ?? false)
   // A ref, not state: the idle timer and the visibility handler both race to
   // finalize, and a ref settles that synchronously without a re-render.
   const finalizedRef = useRef(false)
+  const openingRef = useRef(null)
   // Starts live if configured, but degrades to mock on any failure so a demo
   // never dies on a backend hiccup.
   const [live, setLive] = useState(isLiveMode)
@@ -82,16 +87,27 @@ export default function ChatPanel({ agent }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, isTyping])
 
-  // Open the session up front so the first message doesn't pay for it.
+  // Open a session up front so the first message doesn't pay for it — but only
+  // when there isn't a restored one. Reusing the stored token is what keeps a
+  // refresh continuing the same server-side conversation instead of starting a
+  // second one and splitting the lead's transcript.
   useEffect(() => {
-    if (!isLiveMode) return
+    if (!isLiveMode || token) return
+
+    // Cache the in-flight PROMISE, not a boolean. StrictMode invokes this
+    // effect twice on mount: a boolean guard makes the second pass skip
+    // entirely, and since the first pass's cleanup has already flagged itself
+    // cancelled, nobody ends up applying the token. Sharing the promise means
+    // one network call and whichever pass is still mounted sets the token.
+    openingRef.current ||= openTwinSession(agent.slug)
 
     let cancelled = false
-    openTwinSession(agent.slug)
+    openingRef.current
       .then((session) => {
         if (!cancelled) setToken(session.token)
       })
       .catch((error) => {
+        openingRef.current = null // let a later attempt retry
         if (cancelled) return
         console.warn('[twin] falling back to mock mode:', error.message)
         setLive(false)
@@ -100,7 +116,13 @@ export default function ChatPanel({ agent }) {
     return () => {
       cancelled = true
     }
-  }, [agent.slug])
+  }, [agent.slug, token])
+
+  // Persist after every change so a refresh at any moment resumes correctly.
+  useEffect(() => {
+    if (!live || !token) return
+    saveConversation(agent.slug, { token, messages, leadCaptured })
+  }, [agent.slug, live, token, messages, leadCaptured])
 
   const replyWithMock = useCallback(
     (text) => {
@@ -131,7 +153,7 @@ export default function ChatPanel({ agent }) {
     }
 
     try {
-      const result = await sendTwinMessage(token, text)
+      const result = await sendWithRecovery(text)
       setMessages((prev) => [...prev, { role: 'assistant', text: result.reply }])
       if (result.lead_captured) setLeadCaptured(true)
     } catch (error) {
@@ -145,6 +167,24 @@ export default function ChatPanel({ agent }) {
       console.warn('[twin] message failed:', error.message)
     } finally {
       setIsTyping(false)
+    }
+  }
+
+  // A restored token can point at a session the server has already closed —
+  // routine here, because a session finalizes itself 15s after a lead is
+  // captured. Rather than dead-end the buyer, open a fresh session and resend.
+  // The visible history carries over, and Atlas dedups the new session onto the
+  // same lead, so continuity holds on both sides.
+  async function sendWithRecovery(text) {
+    try {
+      return await sendTwinMessage(token, text)
+    } catch (error) {
+      if (error.status !== 404) throw error
+
+      const session = await openTwinSession(agent.slug)
+      setToken(session.token)
+      finalizedRef.current = false
+      return sendTwinMessage(session.token, text)
     }
   }
 
