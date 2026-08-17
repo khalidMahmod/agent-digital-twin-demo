@@ -130,9 +130,13 @@ def upsert_listing(agent, raw)
   listing.state_id         = resolve_state(raw, country)&.id
   listing.property_type_id = resolve_property_type(raw)&.id
 
-  # The public serializer exposes a decimal amount; the column is cents.
-  amount = raw["asking_price_amount"].to_f
-  listing.asking_price_cents = (amount * 100).round
+  # Copied verbatim, NOT multiplied by 100, despite the column name.
+  # Api::Web::ListingSerializer#asking_price_amount is
+  #   Money.new(asking_price_cents, currency).fractional
+  # and Money#fractional returns its argument unchanged — so the serialized
+  # "amount" IS the stored value. The column holds whole ringgit. Scaling it
+  # turned a RM 3,500/month rental into RM 350,000/month.
+  listing.asking_price_cents = raw["asking_price_amount"].to_f.round
   listing.asking_price_currency = raw["currency"].presence || raw["asking_price_currency"].presence || "MYR"
 
   # Both must be set or the listing is invisible to /api/web/subsales and to
