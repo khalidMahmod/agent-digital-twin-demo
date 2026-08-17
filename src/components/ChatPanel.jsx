@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
-import LeadCapturedCard from './LeadCapturedCard'
 import ChatMessage from './ChatMessage'
+
+// How long the conversation must sit quiet before the session is finalized and
+// its lead scored. Short enough that the Lead is ready in Atlas by the time you
+// switch tabs, long enough not to cut off someone still typing.
+const IDLE_FINALIZE_MS = 15_000
 
 // Mock response generator, grounded in the agent's real data.
 // Used when VITE_ATLAS_API_URL is unset, so the demo runs with no backend —
@@ -66,9 +70,9 @@ export default function ChatPanel({ agent }) {
   const [isTyping, setIsTyping] = useState(false)
   const [token, setToken] = useState(null)
   const [leadCaptured, setLeadCaptured] = useState(false)
-  const [finalizing, setFinalizing] = useState(false)
-  const [finalized, setFinalized] = useState(false)
-  const [lead, setLead] = useState(null)
+  // A ref, not state: the idle timer and the visibility handler both race to
+  // finalize, and a ref settles that synchronously without a re-render.
+  const finalizedRef = useRef(false)
   // Starts live if configured, but degrades to mock on any failure so a demo
   // never dies on a backend hiccup.
   const [live, setLive] = useState(isLiveMode)
@@ -144,34 +148,54 @@ export default function ChatPanel({ agent }) {
     }
   }
 
-  async function handleFinalize() {
-    if (!live || !token || finalizing) return
+  // Silent finalize: ends the session and scores its lead as soon as the
+  // conversation goes quiet, so the Lead is sitting fully scored in Atlas by
+  // the time anyone looks. Nothing about it surfaces to the visitor — this is
+  // a public profile page, and how a buyer was scored is the agent's business,
+  // not theirs.
+  //
+  // Needed because Atlas otherwise only scores sessions idle for 30+ minutes
+  // (TwinChats::FinalizeWorker), which is far too slow to watch happen.
+  const finalizeQuietly = useCallback(async () => {
+    if (!live || !token || finalizedRef.current) return
+    finalizedRef.current = true
 
-    setFinalizing(true)
     try {
-      const result = await finalizeTwinSession(token)
-      setFinalized(true)
-      // Present only when the Atlas instance has demo inspection enabled.
-      if (result.lead) setLead(result.lead)
+      await finalizeTwinSession(token)
     } catch (error) {
+      finalizedRef.current = false
       console.warn('[twin] finalize failed:', error.message)
-    } finally {
-      setFinalizing(false)
     }
-  }
+  }, [live, token])
 
-  // min-h rather than h: the panel grows when the lead card appears instead of
-  // squeezing the transcript out of view.
+  // Fires once the buyer has stopped typing for a beat after a lead exists.
+  useEffect(() => {
+    if (!leadCaptured || isTyping) return
+
+    const timer = setTimeout(finalizeQuietly, IDLE_FINALIZE_MS)
+    return () => clearTimeout(timer)
+  }, [leadCaptured, isTyping, messages, finalizeQuietly])
+
+  // Backstop for the common demo move: capture a lead, then immediately switch
+  // to Atlas. keepalive lets the request outlive the page.
+  useEffect(() => {
+    if (!leadCaptured) return
+
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') finalizeQuietly()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => document.removeEventListener('visibilitychange', onHide)
+  }, [leadCaptured, finalizeQuietly])
+
+  // Nothing here reveals the Atlas side — no lead badge, no scoring control.
+  // This is exactly what a buyer on the public profile would see; the captured
+  // Lead is shown from Atlas itself.
   return (
     <div className="flex flex-col min-h-[430px]">
       <div className="px-5 py-3.5 border-b border-iqi-line flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-iqi-live motion-safe:animate-pulse flex-shrink-0" />
         <span className="text-[13.5px] font-bold text-iqi-ink">{agent.displayName}&apos;s AI Twin</span>
-        {leadCaptured ? (
-          <span className="text-[10px] font-bold uppercase tracking-wide text-iqi-live bg-iqi-live/15 px-2 py-0.5 rounded">
-            Lead captured in Atlas
-          </span>
-        ) : null}
         <span className="ml-auto text-[11.5px] text-iqi-ink-faint">
           {live ? 'grounded · not scripted' : 'demo mode'}
         </span>
@@ -204,7 +228,7 @@ export default function ChatPanel({ agent }) {
 
       {/* Only while the conversation is untouched — once it's underway these
           would be noise competing with the transcript. */}
-      {messages.length === 1 && !finalized ? (
+      {messages.length === 1 ? (
         <div className="px-5 pb-3 flex flex-wrap gap-2">
           {starterPrompts(agent).map((prompt) => (
             <button
@@ -224,40 +248,17 @@ export default function ChatPanel({ agent }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={
-            finalized ? 'This conversation has ended' : `Ask ${agent.displayName} anything...`
-          }
-          disabled={finalized}
-          className="flex-1 rounded-lg border border-iqi-line bg-iqi-surface-2 text-iqi-ink placeholder:text-iqi-ink-faint px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-iqi-accent/40 disabled:opacity-50"
+          placeholder={`Ask ${agent.displayName} anything...`}
+          className="flex-1 rounded-lg border border-iqi-line bg-iqi-surface-2 text-iqi-ink placeholder:text-iqi-ink-faint px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-iqi-accent/40"
         />
         <button
           type="submit"
           className="rounded-lg bg-iqi-accent text-white px-4 py-2 text-[13px] font-bold disabled:opacity-40"
-          disabled={!input.trim() || finalized}
+          disabled={!input.trim()}
         >
           Send
         </button>
       </form>
-
-      {/* Ends the session and scores its lead now, rather than waiting for
-          Atlas's 30-minute idle sweep — which is what makes the qualification
-          step visible inside a short demo. */}
-      {live && leadCaptured && !finalized ? (
-        <button
-          type="button"
-          onClick={handleFinalize}
-          disabled={finalizing}
-          className="mx-3 mb-3 rounded-lg border border-iqi-line text-iqi-ink-dim px-3 py-2 text-[12px] font-semibold hover:text-iqi-ink disabled:opacity-50"
-        >
-          {finalizing ? 'Scoring the lead…' : 'End chat & score this lead'}
-        </button>
-      ) : null}
-
-      {lead ? (
-        <div className="px-3 pb-3">
-          <LeadCapturedCard lead={lead} />
-        </div>
-      ) : null}
     </div>
   )
 }
