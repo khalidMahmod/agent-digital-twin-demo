@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
 import LeadCapturedCard from './LeadCapturedCard'
+import ChatMessage from './ChatMessage'
 
 // Mock response generator, grounded in the agent's real data.
 // Used when VITE_ATLAS_API_URL is unset, so the demo runs with no backend —
@@ -186,7 +187,7 @@ export default function ChatPanel({ agent }) {
                   : 'bg-iqi-surface-2 border border-iqi-line text-iqi-ink rounded-bl-sm'
               }`}
             >
-              {m.text}
+              {m.role === 'user' ? m.text : <ChatMessage text={m.text} />}
             </div>
           </div>
         ))}
