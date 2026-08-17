@@ -170,8 +170,30 @@ so serializer/service patterns port over:
 - ~~`Leads#create` param permitting~~ — no longer relevant: lead creation happens via an internal
   service, not the web controller.
 
+## Nurture: drafts only, agent sends
+
+`TwinChats::NurtureWorker` runs daily, finds AI Twin leads still sitting at
+`NEW` 24h after capture (with a phone number to reach), drafts a follow-up
+grounded in the actual transcript, stores it on the lead, and notifies the
+agent with a one-tap `wa.me` link. Repeats after 3 days, stops after 2 touches,
+and skips anything the agent has already moved off `NEW`.
+
+**The system drafts; the agent sends.** Decided deliberately, not a shortcut:
+
+- An agent messaging someone who left *them* a lead is ordinary business
+  conduct. A system auto-messaging strangers is outbound marketing, which
+  brings WhatsApp Business template rules and consent obligations.
+- It matches Atlas's existing rule for the Claim Agent: customer-visible
+  actions need a human in the loop.
+- "Automated" is still honest — the system notices the lead went quiet, writes
+  the message, and puts it in front of the agent. Only the send is human.
+
+Fully automated outbound remains possible later (`IqiPilot::Service#send_message`
+is an existing channel), but it is an explicit product decision, not a default.
+
 ## Explicitly not doing (for now)
 
 - Pilot entitlement/subscription gating — retired; goal is Twin's own value, not funneling to Pilot.
-- WhatsApp channel support — pipeline is channel-agnostic if this becomes a requirement later, but not scoped into v1.
+- WhatsApp channel support for the *inbound* conversation — pipeline is channel-agnostic if this becomes a requirement later, but not scoped into v1.
+- Automated outbound messaging to buyers — see above; drafts only by design.
 - A "leads generated via Twin" reporting dashboard for leadership — worth considering later if the visibility story needs to be made tangible, not scoped now.
