@@ -74,6 +74,27 @@ export async function openTwinSession(agentSlug) {
   return response.json()
 }
 
+// Picks up the conversation behind a resume link — the signed token Atlas put
+// in the buyer's acknowledgment message. Returns the same shape as
+// openTwinSession plus `messages`, the earlier conversation to show above the
+// new turn.
+export async function resumeTwinSession(resumeToken) {
+  const response = await fetch(`${BASE_URL}/api/web/twin_chats/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ token: resumeToken }),
+  })
+
+  if (!response.ok) {
+    throw new TwinApiError(
+      await parseError(response, 'That link has expired'),
+      response.status,
+    )
+  }
+
+  return response.json()
+}
+
 // Ends the conversation and scores its lead straight away, rather than
 // waiting for Atlas's idle sweep (30+ minutes). Returns the scored lead only
 // when the Atlas instance has demo inspection enabled — in production the

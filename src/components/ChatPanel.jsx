@@ -1,5 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { isLiveMode, openTwinSession, sendTwinMessage, finalizeTwinSession } from '../lib/twinApi'
+import {
+  isLiveMode,
+  openTwinSession,
+  resumeTwinSession,
+  sendTwinMessage,
+  finalizeTwinSession,
+} from '../lib/twinApi'
 import { loadConversation, saveConversation, clearConversation } from '../lib/twinStorage'
 import ChatMessage from './ChatMessage'
 
@@ -77,14 +83,41 @@ function starterPrompts(agent) {
   return prompts.slice(0, 3)
 }
 
+// The `?resume=` token from the link in the buyer's acknowledgment message.
+//
+// Read once and cached, then stripped from the address bar: leaving it there
+// means a refresh opens a second resumed session, and it keeps a token that
+// unlocks this conversation out of the browser history and out of anything the
+// buyer might copy and paste to someone else.
+let cachedResumeToken
+function takeResumeToken() {
+  if (cachedResumeToken !== undefined) return cachedResumeToken
+  if (typeof window === 'undefined') return null
+
+  const params = new URLSearchParams(window.location.search)
+  cachedResumeToken = params.get('resume') || null
+
+  if (cachedResumeToken) {
+    params.delete('resume')
+    const query = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+  }
+
+  return cachedResumeToken
+}
+
 export default function ChatPanel({ agent }) {
   const greeting = {
     role: 'assistant',
     text: `Hi, I'm ${agent.displayName}'s AI assistant. I'm grounded in ${agent.displayName}'s real listings and track record, and I reply 24/7 — even while they're offline. What can I help you with?`,
   }
+  const resumeToken = isLiveMode ? takeResumeToken() : null
   // Restored synchronously so a refresh paints the existing conversation
-  // immediately rather than flashing an empty chat first.
-  const restored = isLiveMode ? loadConversation(agent.slug) : null
+  // immediately rather than flashing an empty chat first. A resume link beats
+  // whatever is in storage: it is the server's copy of this buyer's history,
+  // and they may well be arriving on a different device from the one they
+  // first chatted on — which is the whole point of the link.
+  const restored = isLiveMode && !resumeToken ? loadConversation(agent.slug) : null
 
   const [messages, setMessages] = useState(restored?.messages?.length ? restored.messages : [greeting])
   const [input, setInput] = useState('')
@@ -118,12 +151,27 @@ export default function ChatPanel({ agent }) {
     // entirely, and since the first pass's cleanup has already flagged itself
     // cancelled, nobody ends up applying the token. Sharing the promise means
     // one network call and whichever pass is still mounted sets the token.
-    openingRef.current ||= openTwinSession(agent.slug)
+    openingRef.current ||= resumeToken
+      ? resumeTwinSession(resumeToken)
+      : openTwinSession(agent.slug)
 
     let cancelled = false
     openingRef.current
       .then((session) => {
-        if (!cancelled) setToken(session.token)
+        if (cancelled) return
+        setToken(session.token)
+
+        // A resumed session comes back with the earlier conversation. Showing
+        // it instead of the greeting is the point of the link: the buyer picks
+        // up where they stopped rather than being introduced again.
+        if (session.messages?.length) {
+          setMessages(
+            session.messages.map((m) => ({
+              role: m.role === 'user' ? 'user' : 'assistant',
+              text: m.message,
+            })),
+          )
+        }
       })
       .catch((error) => {
         openingRef.current = null // let a later attempt retry
@@ -135,7 +183,7 @@ export default function ChatPanel({ agent }) {
     return () => {
       cancelled = true
     }
-  }, [agent.slug, token])
+  }, [agent.slug, token, resumeToken])
 
   // Persist after every change so a refresh at any moment resumes correctly.
   useEffect(() => {
