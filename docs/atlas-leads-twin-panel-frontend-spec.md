@@ -144,7 +144,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | Field | Type | Notes |
 |---|---|---|
 | `matched_at` | ISO 8601 string | When the match ran — which is **now**. Matching happens at request time, so these are always current listings, never a snapshot. There is no staleness to warn the agent about, so don't render an "as of…" line. |
-| `listings` | array | At most 3. Ordered cheapest-first for sale leads; rental leads are ordered by listing id, since the sale-price column they sort on is zero for rentals. |
+| `listings` | array | At most 3, cheapest first — by asking price for a sale lead, by monthly rent for a rental one. A lead where rent-or-buy was never established orders newest first instead, since there is no single price to compare. Listings in the buyer's own town come before others in the same state. |
 | `listings[].id` | integer | Atlas listing id — safe to deep-link to the listing page. |
 | `listings[].property_name` | string | |
 | `listings[].township` | string | |
