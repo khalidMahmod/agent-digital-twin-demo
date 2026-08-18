@@ -150,6 +150,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | `listings[].township` | string | |
 | `listings[].price` | string | Pre-formatted, e.g. `"RM 450,000"` or `"RM 2,500/month"`. |
 | `listings[].type` | string | `"Sale"` or `"Rental"`. |
+| `listings[].agent_id` | integer | User id of the listing's owner. Needed for the co-broke request (§5c). |
 | `listings[].agent_name` | string \| `null` | The agent who owns the listing. **Agent-facing only** — the buyer is never told this in chat. |
 | `listings[].agent_phone` | string \| `null` | Same. Render as a `tel:`/WhatsApp link so the agent can call their colleague. |
 
@@ -209,6 +210,32 @@ Both figures arrive pre-formatted; render them as-is. Add a short qualifier such
 
 **Important:** these listings and the owning agents' names are **agent-facing only**. The buyer was shown the properties without any agent attribution, and was told the profile agent can arrange them through IQI's network. Nothing in this card should imply the buyer knows whose listings these are.
 
+## 5c. "Request co-broke" button (the one write in this spec)
+
+This is the only place the twin panel calls a mutating endpoint, and it uses the **existing** Co-broke Centre API — no new endpoint, no new workflow.
+
+Each row in the Co-broke Matches card gets a **"Request co-broke"** button:
+
+```
+POST /api/v1/co_broke_requests
+{
+  "sender_id": <lead.user_id>,          // this lead's agent — already on the lead payload
+  "agent_id":  <listing.agent_id>,      // the listing's owner, from §5b
+  "entity_id": <listing.id>,            // the listing
+  "status_id": 2,                       // SENT
+  "type": "ListingCoBrokeRequest"
+}
+```
+
+The backend does the rest: it re-checks the listing is open to co-broking, seeds the commission split from the listing's own `co_broke_settings`, and notifies both agents (system, push and email, honouring the listing owner's notification preferences). From there the request lives in the Co-broke Centre and follows the normal path — accept or decline, counter-offer on commission, download the agreement, conclude the deal.
+
+**Behaviour:**
+- The button is **agent-initiated only**. Never fire it automatically on page load: sending commits the agent to a commission negotiation with a colleague, so it must be a deliberate click.
+- Consider a confirm step ("Send a co-broke request to {agent_name} for {property_name}?"), since it notifies another person.
+- **On success** (`200`): swap the button for a "Requested" state. Optionally deep-link to the Co-broke Centre.
+- **On `422`**: show the returned `message`. The two real cases are the listing owner having since closed it to co-broking, and a duplicate — the backend enforces one request per (listing, sender, agent), so a second click on an already-sent match is rejected rather than duplicated. Both are expected, not errors to log loudly.
+- Requires the agent to hold the `SUBSALES_LISTINGS` update permission, same as anywhere else co-broke requests are raised. If your app already gates co-broke UI on that, gate this the same way.
+
 ## 6. Edge cases
 
 | Case | Expected behavior |
@@ -228,8 +255,9 @@ Both figures arrive pre-formatted; render them as-is. Add a short qualifier such
 
 ## 7. Non-goals (explicitly out of scope for this change)
 
-- No new API endpoints — everything above comes from the existing lead show response.
-- No write/mutation calls anywhere in this section — it is 100% read-only rendering.
+- No new API endpoints — the lead data comes from the existing show response, and the co-broke request (§5c) uses the existing Co-broke Centre endpoint.
+- Read-only apart from the one deliberate write in §5c ("Request co-broke"), which is always agent-initiated.
+- No co-broke workflow rebuilt here — accepting, negotiating commission, the agreement PDF and concluding the deal all stay in the Co-broke Centre, which already does them.
 - No changes to the Leads list view, filters, or any other part of the modal (Lead Details / Lead Source / Interest / Lead Status sections are untouched).
 - No automatic sending of the nurture draft — the agent always sends manually via the WhatsApp/email link.
 - No polling or real-time updates — the data is as fresh as whenever the modal was opened, same as every other field in it.
@@ -252,6 +280,9 @@ Both figures arrive pre-formatted; render them as-is. Add a short qualifier such
 - [ ] A lead where the twin ran an affordability check shows the affordability row with both figures and the "indicative" qualifier; a lead without one shows no row.
 - [ ] A lead with co-broke matches shows the card with each listing's owning agent and a working call link; a lead without matches shows no card.
 - [ ] A co-broke listing whose owning agent has no phone renders the name as plain text, not a broken link.
+- [ ] "Request co-broke" sends the request, both agents are notified, and it appears in the Co-broke Centre for each of them.
+- [ ] Clicking it a second time on the same listing surfaces the duplicate `422` message rather than creating a second request.
+- [ ] A listing whose owner has since closed it to co-broking surfaces the "not open for co-broke" `422` message.
 
 ## 9. Open questions for the FE dev (design polish, not blockers)
 
