@@ -7,6 +7,7 @@ import {
   finalizeTwinSession,
 } from '../lib/twinApi'
 import { loadConversation, saveConversation, clearConversation } from '../lib/twinStorage'
+import { NUDGE_AFTER_MS, shouldNudge, nudgeText } from '../lib/nudge'
 import ChatMessage from './ChatMessage'
 
 // How long the conversation must sit quiet before the session is finalized and
@@ -129,6 +130,8 @@ export default function ChatPanel({ agent }) {
   // A ref, not state: the idle timer and the visibility handler both race to
   // finalize, and a ref settles that synchronously without a re-render.
   const finalizedRef = useRef(false)
+  // Once per conversation, and a ref so a re-render cannot reset it.
+  const nudgedRef = useRef(false)
   const openingRef = useRef(null)
   // Starts live if configured, but degrades to mock on any failure so a demo
   // never dies on a backend hiccup.
@@ -316,6 +319,33 @@ export default function ChatPanel({ agent }) {
     const timer = setTimeout(finalizeQuietly, IDLE_FINALIZE_MS)
     return () => clearTimeout(timer)
   }, [leadCaptured, isTyping, messages, finalizeQuietly])
+
+  // The one message the twin sends unprompted: a buyer who got somewhere and
+  // then went quiet, with no way for the agent to reach them. See lib/nudge.js
+  // for the rules and why they are drawn where they are.
+  //
+  // Purely local — no model call, no request. The wording comes from what the
+  // conversation already contains, which is specific enough to be worth
+  // sending and costs nothing to produce. It also means this cannot invent a
+  // property, which a generated line could.
+  useEffect(() => {
+    if (isTyping) return
+    if (!shouldNudge({ messages, leadCaptured, alreadyNudged: nudgedRef.current })) return
+
+    const timer = setTimeout(() => {
+      // Re-checked on fire: 75 seconds is long enough for the buyer to have
+      // started typing, or answered, since the timer was set.
+      if (!shouldNudge({ messages, leadCaptured, alreadyNudged: nudgedRef.current })) return
+
+      nudgedRef.current = true
+      setMessages((current) => [
+        ...current,
+        { role: 'assistant', text: nudgeText({ messages, agentName: agent.displayName }) },
+      ])
+    }, NUDGE_AFTER_MS)
+
+    return () => clearTimeout(timer)
+  }, [messages, leadCaptured, isTyping, agent.displayName])
 
   // Backstop for the common demo move: capture a lead, then immediately switch
   // to Atlas. keepalive lets the request outlive the page.
