@@ -150,6 +150,8 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | `listings[].township` | string | |
 | `listings[].price` | string | Pre-formatted, e.g. `"RM 450,000"` or `"RM 2,500/month"`. |
 | `listings[].type` | string | `"Sale"` or `"Rental"`. |
+| `listings[].bedrooms` | string \| `null` | Already formatted, and **not always a plain number** — Atlas records bedrooms as labels like `"3"`, `"3+1"` (three plus a utility room) or `"Studio"`. Render the string as given; never parse it as an integer. `null` when the listing doesn't say. |
+| `listings[].bathrooms` | string \| `null` | Same treatment, e.g. `"2"`. `null` when unset. |
 | `listings[].agent_id` | integer | User id of the listing's owner. Needed for the co-broke request (§5c). |
 | `listings[].agent_name` | string \| `null` | The agent who owns the listing. **Agent-facing only** — the buyer is never told this in chat. |
 | `listings[].agent_phone` | string \| `null` | Same. Render as a `tel:`/WhatsApp link so the agent can call their colleague. |
@@ -205,7 +207,7 @@ These are matched fresh on every request against currently active, co-broke-enab
 
 **Structure:**
 - Header: "Co-broke Matches", with a short subtitle: "Other IQI agents have stock matching this buyer."
-- One row per `listings[]` entry: `property_name`, `township`, `price`, `type` badge.
+- One row per `listings[]` entry: `property_name`, `township`, `price`, `type` badge, and `bedrooms`/`bathrooms` when present. Show the room counts — whether it has the bedrooms the buyer asked for is what decides whether the agent bothers, and without it they have to open each listing to find out.
 - Each row shows the **owning agent**: `agent_name`, with `agent_phone` as a call/WhatsApp link so the agent can reach their colleague directly.
 - `id` can deep-link to the existing listing page if the modal has a route for it — optional.
 - Read-only. No co-broke request is created from here; the agent contacts the colleague themselves.
