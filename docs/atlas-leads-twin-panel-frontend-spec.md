@@ -143,7 +143,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 
 | Field | Type | Notes |
 |---|---|---|
-| `matched_at` | ISO 8601 string | When the match ran. |
+| `matched_at` | ISO 8601 string | When the match ran — which is **now**. Matching happens at request time, so these are always current listings, never a snapshot. There is no staleness to warn the agent about, so don't render an "as of…" line. |
 | `listings` | array | At most 3. Ordered cheapest-first for sale leads; rental leads are ordered by listing id, since the sale-price column they sort on is zero for rentals. |
 | `listings[].id` | integer | Atlas listing id — safe to deep-link to the listing page. |
 | `listings[].property_name` | string | |
@@ -201,6 +201,8 @@ Both figures arrive pre-formatted; render them as-is. Add a short qualifier such
 
 **Render only when `ai_twin_cobroke` is non-null.** Place it after the Suggested Follow-up card.
 
+These are matched fresh on every request against currently active, co-broke-enabled stock — a listing that sells, or whose owner closes it to co-broking, drops out of this list by itself. So the set can legitimately differ between two views of the same lead, and can go from present to absent. Render whatever comes back; don't cache it client-side or treat a disappearance as an error.
+
 **Structure:**
 - Header: "Co-broke Matches", with a short subtitle: "Other IQI agents have stock matching this buyer."
 - One row per `listings[]` entry: `property_name`, `township`, `price`, `type` badge.
@@ -251,6 +253,7 @@ The backend does the rest: it re-checks the listing is open to co-broking, seeds
 | Message contains Markdown the renderer doesn't support (tables, links, etc.) | Not expected from the twin today (only bold + bullets are used), but fall back to plain text rendering rather than showing raw Markdown syntax if something unsupported appears. |
 | `extracted.financing === null` | Render no affordability row (§5a). This is the common case — most buyers never run the check. |
 | `ai_twin_cobroke` absent or `null` | Omit the Co-broke Matches card entirely (§5b). Also the common case. |
+| The card was there earlier and is now gone | Expected, not a bug — the matching stock sold or was closed to co-broking (§5b). Just don't render the card. |
 | A co-broke listing has `agent_phone === null` | Show `agent_name` as plain text with no call link, rather than a dead link. |
 
 ## 7. Non-goals (explicitly out of scope for this change)
