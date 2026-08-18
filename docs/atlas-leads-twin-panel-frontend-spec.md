@@ -128,7 +128,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 |---|---|---|
 | `draft` | string | Suggested WhatsApp/message text, grounded in the conversation. |
 | `drafted_at` | ISO 8601 string | |
-| `touch_count` | integer | How many nurture drafts have been sent for this lead so far (1st, 2nd follow-up, etc.). Display only if useful; not required. |
+| `touch_count` | integer, 1–3 | Which nudge this is. Each has a different job — 1 follows up on the conversation, 2 leads with new matching stock, 3 is a warm sign-off — so `draft` reads differently at each. Note these are **drafted**, not sent: the agent sends them. Display only if useful; not required. |
 | `whatsapp_url` | string \| `null` | Full `https://wa.me/...` link, pre-filled. `null` if the lead has no phone number. |
 | `email_url` | string \| `null` | Full `mailto:...` link, pre-filled subject + body. `null` if the lead has no email. |
 
@@ -163,7 +163,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 
 **Structure:**
 - Header: "AI Twin Conversation"
-  - If `session_count > 1`: a small badge/pill next to the header, e.g. "Returning buyer" or "2 visits" (either is fine — use whatever pill style the modal already has for status/type badges).
+  - If `session_count > 1`: a small badge/pill next to the header, e.g. "Returning buyer" or "2 visits" (either is fine — use whatever pill style the modal already has for status/type badges). Worth rendering well: buyers now also come back through a resume link in their acknowledgment message, so this is a real and increasingly common state, not a rare one.
   - If `qualified === false`: a small inline note under the header, e.g. "⚠ Marked not qualified by AI" (use the modal's existing warning/muted-text style, not a hard error color — this is informational, not a validation error).
 - Body: chat-style transcript, scrollable container with a max height (roughly 400–500px is reasonable) so a long conversation doesn't blow out the modal.
   - One bubble/row per `messages[]` entry, oldest at top.
