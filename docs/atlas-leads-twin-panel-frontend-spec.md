@@ -155,6 +155,7 @@ lead (leads younger than 24h, or already contacted, won't have one yet).
 | `listings[].agent_id` | integer | User id of the listing's owner. Needed for the co-broke request (§5c). |
 | `listings[].agent_name` | string \| `null` | The agent who owns the listing. **Agent-facing only** — the buyer is never told this in chat. |
 | `listings[].agent_phone` | string \| `null` | Same. Render as a `tel:`/WhatsApp link so the agent can call their colleague. |
+| `listings[].request_id` | integer — **absent unless raised** | Present only when a co-broke request was already raised for this listing from this lead (§5c). Presence means: render the row's button in its "Requested" state. |
 
 ## 4. Component 1 — "AI Twin Conversation" card
 
@@ -227,7 +228,10 @@ POST /api/v1/co_broke_requests
   "agent_id":  <listing.agent_id>,      // the listing's owner, from §5b
   "entity_id": <listing.id>,            // the listing
   "status_id": 2,                       // SENT
-  "type": "ListingCoBrokeRequest"
+  "type": "ListingCoBrokeRequest",
+  "lead_id":   <lead.id>                // ALWAYS pass this — it records the request on the
+                                        // lead for attribution, and it's what makes the
+                                        // "Requested" state survive a reload (see below)
 }
 ```
 
@@ -237,6 +241,7 @@ The backend does the rest: it re-checks the listing is open to co-broking, seeds
 - The button is **agent-initiated only**. Never fire it automatically on page load: sending commits the agent to a commission negotiation with a colleague, so it must be a deliberate click.
 - Consider a confirm step ("Send a co-broke request to {agent_name} for {property_name}?"), since it notifies another person.
 - **On success** (`200`): swap the button for a "Requested" state. Optionally deep-link to the Co-broke Centre.
+- **On reload**: a listing whose request was already raised comes back with a `request_id` field (see §5b's field table) — render those rows in the "Requested" state from the start. This only works if the POST included `lead_id`, which is why it's marked ALWAYS above.
 - **On `422`**: show the returned `message`. The two real cases are the listing owner having since closed it to co-broking, and a duplicate — the backend enforces one request per (listing, sender, agent), so a second click on an already-sent match is rejected rather than duplicated. Both are expected, not errors to log loudly.
 - Requires the agent to hold the `SUBSALES_LISTINGS` update permission, same as anywhere else co-broke requests are raised. If your app already gates co-broke UI on that, gate this the same way.
 
@@ -257,6 +262,21 @@ The backend does the rest: it re-checks the listing is open to co-broking, seeds
 | `ai_twin_cobroke` absent or `null` | Omit the Co-broke Matches card entirely (§5b). Also the common case. |
 | The card was there earlier and is now gone | Expected, not a bug — the matching stock sold or was closed to co-broking (§5b). Just don't render the card. |
 | A co-broke listing has `agent_phone === null` | Show `agent_name` as plain text with no call link, rather than a dead link. |
+
+## 6a. Optional: funnel stats endpoint (build only if asked)
+
+`GET /api/v1/leads/twin_funnel` returns the agent's own AI-Twin funnel as flat JSON — how many leads the twin captured, how many were contactable, engaged, completed, how many co-broke requests came out of them and what those turned into, plus average hours from capture to first engagement:
+
+```json
+{
+  "leads": 12, "contactable": 9, "awaiting_contact": 4, "engaged": 6,
+  "completed": 2, "not_qualified": 2,
+  "cobroke": { "leads_with_requests": 3, "requests": 4, "accepted": 2, "concluded": 1 },
+  "avg_hours_to_first_engagement": 5.4
+}
+```
+
+No UI is required by this spec — it exists for reporting and a possible stats strip later. Documented here so nobody builds a client-side version by re-aggregating the leads list.
 
 ## 7. Non-goals (explicitly out of scope for this change)
 
